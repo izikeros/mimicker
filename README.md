@@ -1,0 +1,5 @@
+This is a helper tool to be used in my photography workflow for applying structure I have added to previews to the high quality exports living in the flat directory.
+
+Sometimes I do photo selection being away from my workstation and for such cases I generate miniatures (previews). Later, I orgranize e.g. photos from the big trip into folders related to different trip stages. And inside stages I perform the selection of photos I would like to include into presentation (or other form of delivery).
+In each subdirectory I create `sel` or `selected` folder and move or copy pictures there.
+The outcome of the selection is structurized directory but with the low quality previews. What I would like achieve is the same structure but containing high quality photos taken from flat directory with exported, postprocessed photos. Here comes this tool - scans structure of stucturized previews, create the same structure but with the HQ photos from the flat folder with all HQ photos.
