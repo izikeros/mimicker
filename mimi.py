@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Structurize flat collection of photos based on structurized miniatures.
+"""Structurize flat collection of photos based on structured miniatures.
 
 Use handy miniatures to manually sort the photos, then, prepare set for
  delivery by adding structure to flat, high-quality images or videos.
 
 Author: Krystian Safjan
 License: MIT
+
+TODO:
+- add support for other than "sel" names of sel* folder, use regex instead of {pattern}{sep}
 """
 import argparse
 import logging
 import os
+import pathlib
 import shutil
 from typing import List
 
@@ -17,11 +21,15 @@ logging.basicConfig(level=logging.INFO)
 
 
 def ignore_files(directory, files) -> list:
-    """Callable that returns list of files to be ignored while copying tree"""
+    """Callable that returns list of files to be ignored while copying tree.
+
+    Ignore files
+    """
+
     return [f for f in files if os.path.isfile(os.path.join(directory, f))]
 
 
-def copy_tree(input_path: str, output_path: str, force: bool):
+def copy_tree(input_path: str, output_path: str, force: bool, move_to_top_level):
     """Copy structure of input path excluding files."""
     logging.debug('Starting copy procedure for directory structure.')
     if os.path.isdir(output_path):
@@ -32,8 +40,12 @@ def copy_tree(input_path: str, output_path: str, force: bool):
         else:
             logging.error('Output directory exists. Aborting.')
             exit(1)
-    shutil.copytree(input_path, output_path, ignore=ignore_files)
-    logging.debug(f'copied structure from:{input_path} to: {output_path}')
+
+    if not move_to_top_level:
+        shutil.copytree(input_path, output_path, ignore=ignore_files)
+        logging.debug(f'copied structure from:{input_path} to: {output_path}')
+    else:
+        os.makedirs(output_path)
 
 
 def list_dir(root_dir: str) -> List[str]:
@@ -43,24 +55,42 @@ def list_dir(root_dir: str) -> List[str]:
     for current_path, folders, files in os.walk(root_dir):
         for file in files:
             full_file = os.path.join(current_path, file)
-            logging.debug(full_file)
-            file_list.append(full_file)
+            if not file.startswith('.'):
+                logging.debug(full_file)
+                file_list.append(full_file)
+            else:
+                logging.debug(f'Skipping: {full_file}')
     return file_list
 
 
-def copy_files(input_files: List[str], output_files: List[str]):
+def copy_files(input_HD_files: List[str],
+               input_prev_files: List[str],
+               output_files: List[str]):
     """Copy files from one list to targets defined in second list
 
+    :param input_prev_files:
+    :param input_HD_files:
     :param input_files:
     :param output_files:
     :return:
     """
     logging.debug('Copying HQ files from flat dir to structured dir.')
     cnt = 0
-    for src, dst in zip(input_files, output_files):
-        shutil.copyfile(src, dst)
-        cnt += 1
-    logging.info(f'Copied {cnt} files.')
+    err = 0
+    wrn = 0
+    for src_hd, src_prev, dst in zip(input_HD_files, input_prev_files, output_files):
+        try:
+            shutil.copyfile(src_hd, dst)
+            cnt += 1
+        except FileNotFoundError:
+            print(f'WRN: {src_prev}\t{src_hd}')
+            wrn += 1
+            try:
+                shutil.copyfile(src_prev, dst)
+            except FileNotFoundError:
+                print(f'ERR: {src_prev}\t{src_hd}')
+                err += 1
+    logging.info(f'Copied {cnt} files. WRN: {wrn}, ERR: {err}')
 
 
 def keep_sel_only(input_files: List[str], pattern: str = 'sel'):
@@ -88,6 +118,30 @@ def level_up_sel_targets(output_files, pattern: str = 'sel'):
     return filtered_output_files
 
 
+def add_parent_dir_prefix(output_files, add_prefix, move_to_top_level):
+    logging.debug('Adding parent dir prefix to filename')
+    sep = os.path.sep
+    prefixed_output_files = []
+    for file_path in output_files:
+        pth, file = os.path.split(file_path)
+        parent = str(pth).split(sep)[-1]
+
+        if add_prefix:
+            file_new = '__'.join([parent, file])
+        else:
+            file_new = file
+
+        if move_to_top_level:
+            p = pathlib.Path(file_path)
+            path = p.parents[1]
+        else:
+            path = pth
+        full_file = os.path.join(path, file_new)
+
+        prefixed_output_files.append(full_file)
+    return prefixed_output_files
+
+
 def correct_target_path(input_files, dir_before, dir_after):
     """Replace previews path with output path in list of input preview files.
 
@@ -109,7 +163,11 @@ def correct_target_path(input_files, dir_before, dir_after):
 
 def prepare_sources(input_prev_files: List[str], flat_hq_dir: str):
     logging.debug('Preparing sources - list of files from flat dir with HQ photos')
-    src = [os.path.join(flat_hq_dir, os.path.split(f)[1]) for f in input_prev_files]
+    src = []
+    for f in input_prev_files:
+        f_orig = os.path.split(f)[1]
+        f_orig_raw = f_orig[5:]  # FIXME: KS: 2020-02-28: Use regular expression here
+        src.append(os.path.join(flat_hq_dir, f_orig_raw))
     return src
 
 
@@ -128,6 +186,44 @@ def remove_sel_target_dirs(input_files_sel, pattern='sel'):
             print(ex)
 
 
+def main(args):
+    # create empty structure of directories
+    copy_tree(args.prev_dir, args.hq_struct_dir, args.force, args.move_to_top_level)
+
+    # discover files to copy in previews
+    in_prev_files = list_dir(args.prev_dir)
+
+    # keep sel only
+    in_files_sel = in_prev_files
+    if args.sel_only:
+        in_files_sel = keep_sel_only(in_prev_files)
+
+    # prepare targets (replace prev_dir with output_dir)
+    targets = correct_target_path(input_files=in_files_sel,
+                                  dir_before=args.prev_dir,
+                                  dir_after=args.hq_struct_dir)
+
+    # prepare HQ sources
+    # TODO: KS: 2019-12-26: handle non-existing sources
+    sources = prepare_sources(
+        input_prev_files=in_files_sel,
+        flat_hq_dir=args.hq_flat_dir)
+
+    # level-up selections
+    out_files_level_up = targets
+    if args.sel_only and args.level_up_sel:
+        out_files_level_up = level_up_sel_targets(targets)
+        if not args.move_to_top_level:
+            remove_sel_target_dirs(targets)
+
+
+    out_files_level_up = add_parent_dir_prefix(out_files_level_up, args.add_prefix,
+                                               args.move_to_top_level)
+
+    # finally, copy the high quality
+    copy_files(sources, in_files_sel, out_files_level_up)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Copy directory tree with replacing previews with hi-quality images")
@@ -143,40 +239,15 @@ if __name__ == '__main__':
                         help='Keep only content of "sel" subdirectories')
     parser.add_argument('--level-up-sel', '-l', action='store_true',
                         help='Move content of sel folder')
+    parser.add_argument('--move-to-top-level', '-t', action='store_true',
+                        help='Move contents of all sel folders to top level')
+    parser.add_argument('--add-prefix', '-p', action='store_true',
+                        help='add event directory as filename prefix')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Display more information on what is happening during the operation.')
     parser.add_argument('--force', '-f', action='store_true',
                         help='Force removing of the output directory if exists.')
 
-    args = parser.parse_args()
+    arguments = parser.parse_args()
 
-    # create empty structure of directories
-    copy_tree(args.prev_dir, args.hq_struct_dir, args.force)
-
-    # discover files to copy in previews
-    in_prev_files = list_dir(args.prev_dir)
-
-    # keep sel only
-    in_files_sel = in_prev_files
-    if args.sel_only:
-        in_files_sel = keep_sel_only(in_prev_files)
-
-    # prepare targets (replace prev_dir with output_dir)
-    targets = correct_target_path(input_files=in_prev_files,
-                                  dir_before=args.prev_dir,
-                                  dir_after=args.hq_struct_dir)
-
-    # prepare HQ sources
-    # TODO: KS: 2019-12-26: handle non-existing sources
-    sources = prepare_sources(
-        input_prev_files=in_files_sel,
-        flat_hq_dir=args.hq_struct_dir)
-
-    # level-up selections
-    out_files_level_up = targets
-    if args.sel_only and args.level_up_sel:
-        out_files_level_up = level_up_sel_targets(targets)
-        remove_sel_target_dirs(targets)
-
-    # finally, copy the high quality
-    copy_files(in_files_sel, out_files_level_up)
+    main(arguments)
