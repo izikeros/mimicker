@@ -7,6 +7,41 @@ Use handy miniatures to manually sort the photos, then, prepare set for
 Author: Krystian Safjan
 License: MIT
 
+Workflow
+- directory for each event
+- for each event create sel subdir
+- copy all photos of the event to dedicated folder
+- manually move image of interest ("selected") to sel subdir of event
+- keep the unselected photos in event dir
+
+Usage examples:
+mimi.py prev_dir hq_flat_dir hq_struct_dir
+
+Options:
+Let's assume we have structure:
+01_waterfalls/
+    sel/
+        img_1.jpg
+        img_2.jpg
+
+'--sel-only', '-s'
+    Keep only content of "sel" subdirectories
+
+'--level-up-sel', '-l'
+    Move content of sel folder
+
+'--move-to-top-level', '-t',
+    Move contents of all sel folders to top level
+
+'--add-prefix', '-p'
+    Add event directory as filename prefix
+
+'--verbose', '-v',
+    Display more information on what is happening during the operation.
+
+'--force', '-f',
+    Force removing of the output directory if exists.
+
 TODO:
 - add support for other than "sel" names of sel* folder, use regex instead of {pattern}{sep}
 """
