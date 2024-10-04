@@ -131,5 +131,10 @@ dmypy.json
 .pyre/
 .idea/
 .vscode/
-img/
+/img/
+/test/images/
+/test/images/inp_flat_HD/
+/test/images/inp_sorted/
 test/images
+test/images/inp_flat_HD
+test/images/inp_sorted
